@@ -1,0 +1,16 @@
+# Environment and secrets
+.env
+*.env
+
+# Python virtual environment
+venv/
+__pycache__/
+*.pyc
+
+# Generated output
+installation_analysis.txt
+logs/
+data/
+
+# OS files
+.DS_Store
