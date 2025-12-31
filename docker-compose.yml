@@ -1,0 +1,124 @@
+version: '3.8'
+
+# ClaudeHome Service Stack
+# Autonomous smart home intelligence for Home Assistant
+
+services:
+  # Redis - Message queue for event processing
+  redis:
+    image: redis:7-alpine
+    container_name: claudehome_redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - claudehome_net
+
+  # Privacy Filter - Anonymizes data before external processing
+  privacy_filter:
+    build: ./services/privacy_filter
+    container_name: claudehome_privacy_filter
+    restart: unless-stopped
+    ports:
+      - "8001:8001"
+    volumes:
+      - ./.claude/skills:/opt/claudehome/.claude/skills:ro
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - claudehome_net
+
+  # Event Ingester - Monitors HA for state changes
+  event_ingester:
+    build: ./services/event_ingester
+    container_name: claudehome_event_ingester
+    restart: unless-stopped
+    ports:
+      - "8002:8002"
+    environment:
+      - HA_CONFIG_DIR=/config
+      - REDIS_URL=redis://redis:6379
+      - POLL_INTERVAL=1.0
+    volumes:
+      - /media/pi/NextCloud/homeassistant:/config:ro
+    depends_on:
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8002/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - claudehome_net
+
+  # Health Monitor - Watches logs and sends alerts
+  health_monitor:
+    build: ./services/health_monitor
+    container_name: claudehome_health_monitor
+    restart: unless-stopped
+    ports:
+      - "8003:8003"
+    environment:
+      - HA_CONFIG_DIR=/config
+      - DISCORD_WEBHOOK=${DISCORD_WEBHOOK:-}
+      - CHECK_INTERVAL=10.0
+    volumes:
+      - /media/pi/NextCloud/homeassistant:/config:ro
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8003/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - claudehome_net
+
+  # Orchestrator - Main coordination service
+  orchestrator:
+    build: ./services/orchestrator
+    container_name: claudehome_orchestrator
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - REDIS_URL=redis://redis:6379
+      - PRIVACY_FILTER_URL=http://privacy_filter:8001
+      - HEALTH_MONITOR_URL=http://health_monitor:8003
+      - EVENT_INGESTER_URL=http://event_ingester:8002
+      - CLAUDE_MODEL=claude-sonnet-4-20250514
+      - BATCH_SIZE=10
+      - BATCH_WAIT_SECONDS=5.0
+    depends_on:
+      redis:
+        condition: service_healthy
+      privacy_filter:
+        condition: service_started
+      event_ingester:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - claudehome_net
+
+volumes:
+  redis_data:
+    driver: local
+
+networks:
+  claudehome_net:
+    driver: bridge

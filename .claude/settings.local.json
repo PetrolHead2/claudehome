@@ -7,7 +7,13 @@
       "Bash(git -C /opt/claudehome status)",
       "Bash(git init:*)",
       "Bash(git add:*)",
-      "Bash(git commit:*)"
+      "Bash(git commit:*)",
+      "Bash(sudo apt update:*)",
+      "Bash(sudo apt install:*)",
+      "Bash(gh --version:*)",
+      "Bash(gh auth status:*)",
+      "Bash(gh repo create:*)",
+      "Bash(git push)"
     ]
   }
 }

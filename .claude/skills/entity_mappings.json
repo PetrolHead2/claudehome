@@ -1,0 +1,150 @@
+{
+  "version": "1.0",
+  "generated": "2025-12-31",
+  "salt": "claudehome_v1_salt_change_me",
+  "mappings": {
+    "persons": {
+      "person.magnus": "person.person_1",
+      "person.victoria": "person.person_2",
+      "person.william": "person.person_3",
+      "person.asia": "person.person_4"
+    },
+    "device_trackers": {
+      "device_tracker.magnus_mobil": "device_tracker.tracker_primary",
+      "device_tracker.victoria_mobil": "device_tracker.tracker_2",
+      "device_tracker.william_mobil": "device_tracker.tracker_3",
+      "device_tracker.asia_mobil": "device_tracker.tracker_4",
+      "device_tracker.jbb78w": "device_tracker.vehicle_1"
+    },
+    "cameras": {
+      "camera.frigate_15": "camera.cam_point_a1",
+      "camera.frigate_17": "camera.cam_point_a2",
+      "camera.frigate_34": "camera.cam_point_a3",
+      "camera.frigate_44": "camera.cam_point_a4",
+      "camera.frigate_147": "camera.cam_point_b1",
+      "camera.frigate_157": "camera.cam_point_b2",
+      "camera.frigate_187": "camera.cam_point_b3",
+      "camera.besder_1": "camera.cam_point_c1",
+      "camera.besder_2": "camera.cam_point_c2",
+      "camera.besder_3": "camera.cam_point_c3",
+      "camera.besder_4": "camera.cam_point_c4",
+      "camera.besder_5": "camera.cam_point_c5"
+    },
+    "zones": {
+      "zone.home": "zone.location_primary",
+      "zone.dianavagen": "zone.location_primary",
+      "zone.work": "zone.location_work",
+      "zone.school": "zone.location_edu"
+    },
+    "input_texts": {
+      "input_text.magnusregion": "input_text.person_1_region",
+      "input_text.victoriaregion": "input_text.person_2_region",
+      "input_text.williamregion": "input_text.person_3_region",
+      "input_text.asiaregion": "input_text.person_4_region"
+    },
+    "switches_frigate": {
+      "switch.frigate_15_detect": "switch.cam_a1_detect",
+      "switch.frigate_15_motion": "switch.cam_a1_motion",
+      "switch.frigate_15_recordings": "switch.cam_a1_recordings",
+      "switch.frigate_17_detect": "switch.cam_a2_detect",
+      "switch.frigate_17_motion": "switch.cam_a2_motion",
+      "switch.frigate_17_recordings": "switch.cam_a2_recordings",
+      "switch.frigate_34_detect": "switch.cam_a3_detect",
+      "switch.frigate_34_motion": "switch.cam_a3_motion",
+      "switch.frigate_34_recordings": "switch.cam_a3_recordings",
+      "switch.frigate_44_detect": "switch.cam_a4_detect",
+      "switch.frigate_44_motion": "switch.cam_a4_motion",
+      "switch.frigate_44_recordings": "switch.cam_a4_recordings",
+      "switch.frigate_147_detect": "switch.cam_b1_detect",
+      "switch.frigate_147_motion": "switch.cam_b1_motion",
+      "switch.frigate_147_recordings": "switch.cam_b1_recordings",
+      "switch.frigate_157_detect": "switch.cam_b2_detect",
+      "switch.frigate_157_motion": "switch.cam_b2_motion",
+      "switch.frigate_157_recordings": "switch.cam_b2_recordings",
+      "switch.frigate_187_detect": "switch.cam_b3_detect",
+      "switch.frigate_187_motion": "switch.cam_b3_motion",
+      "switch.frigate_187_recordings": "switch.cam_b3_recordings",
+      "switch.besder_1_detect": "switch.cam_c1_detect",
+      "switch.besder_1_motion": "switch.cam_c1_motion",
+      "switch.besder_1_recordings": "switch.cam_c1_recordings",
+      "switch.besder_2_detect": "switch.cam_c2_detect",
+      "switch.besder_2_motion": "switch.cam_c2_motion",
+      "switch.besder_2_recordings": "switch.cam_c2_recordings",
+      "switch.besder_3_detect": "switch.cam_c3_detect",
+      "switch.besder_3_motion": "switch.cam_c3_motion",
+      "switch.besder_3_recordings": "switch.cam_c3_recordings",
+      "switch.besder_4_detect": "switch.cam_c4_detect",
+      "switch.besder_4_motion": "switch.cam_c4_motion",
+      "switch.besder_4_recordings": "switch.cam_c4_recordings",
+      "switch.besder_5_detect": "switch.cam_c5_detect",
+      "switch.besder_5_motion": "switch.cam_c5_motion",
+      "switch.besder_5_recordings": "switch.cam_c5_recordings"
+    },
+    "binary_sensors_occupancy": {
+      "binary_sensor.besder_1_person_occupancy": "binary_sensor.cam_c1_person",
+      "binary_sensor.besder_2_person_occupancy": "binary_sensor.cam_c2_person",
+      "binary_sensor.besder_3_person_occupancy": "binary_sensor.cam_c3_person",
+      "binary_sensor.besder_4_person_occupancy": "binary_sensor.cam_c4_person",
+      "binary_sensor.besder_5_person_occupancy": "binary_sensor.cam_c5_person",
+      "binary_sensor.template_binary_someone_home": "binary_sensor.occupancy_primary"
+    },
+    "vehicle": {
+      "sensor.jbb78w_state_of_charge": "sensor.vehicle_1_soc",
+      "sensor.jbb78w_range_electric": "sensor.vehicle_1_range_ev",
+      "sensor.jbb78w_fuel_level": "sensor.vehicle_1_fuel",
+      "sensor.jbb78w_odometer": "sensor.vehicle_1_odometer",
+      "sensor.jbb78w_ignition_state": "sensor.vehicle_1_ignition",
+      "switch.jbb78w_pre_entry_climate_control": "switch.vehicle_1_climate",
+      "number.jbb78w_fuel_consumption": "number.vehicle_1_consumption"
+    },
+    "charger": {
+      "sensor.laddbox_charger_mode": "sensor.evse_1_mode",
+      "sensor.laddbox_charge_power": "sensor.evse_1_power",
+      "sensor.laddbox_session_total_charge": "sensor.evse_1_session",
+      "switch.laddbox_charging": "switch.evse_1_charging",
+      "button.laddbox_authorize_charging": "button.evse_1_authorize",
+      "button.laddbox_stop_charging": "button.evse_1_stop",
+      "button.laddbox_resume_charging": "button.evse_1_resume"
+    },
+    "media_players": {
+      "media_player.lounge": "media_player.speaker_1",
+      "media_player.kitchen_display": "media_player.display_1"
+    },
+    "alarm": {
+      "alarm_control_panel.sector": "alarm_control_panel.security_1"
+    },
+    "location_strings": {
+      "Dianavägen 15": "primary_residence",
+      "Dianavagen 15": "primary_residence",
+      "dianavagen": "primary_residence",
+      "Täby": "metro_area",
+      "Taby": "metro_area",
+      "Stockholm": "metro_region",
+      "koffern": "residence_id",
+      "Magnus": "person_1",
+      "Victoria": "person_2",
+      "William": "person_3",
+      "Asia": "person_4",
+      "JBB78W": "vehicle_1",
+      "jbb78w": "vehicle_1"
+    }
+  },
+  "sensitive_patterns": [
+    ".*password.*",
+    ".*token.*",
+    ".*api_key.*",
+    ".*secret.*",
+    ".*credential.*",
+    ".*@gmail\\.com.*",
+    ".*@.*\\.com.*",
+    "\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}",
+    "[A-Z]{3}\\d{2}[A-Z0-9]"
+  ],
+  "never_log": [
+    "ANTHROPIC_API_KEY",
+    "HA_CONFIG_DIR",
+    "mysql://",
+    "sk-ant-",
+    "influxdb.token"
+  ]
+}
