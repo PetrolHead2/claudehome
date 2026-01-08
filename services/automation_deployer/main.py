@@ -14,6 +14,9 @@ from typing import Dict, Any, Optional
 from datetime import datetime
 from contextlib import asynccontextmanager
 import urllib.parse
+import sys
+sys.path.insert(0, '/app/shared')
+from ha_client import call_ha_service
 
 import redis.asyncio as redis
 import aiohttp
@@ -132,22 +135,13 @@ async def git_commit(message: str) -> bool:
 
 
 async def reload_ha_automations() -> bool:
-    """Reload Home Assistant automations via API."""
-    if not HOME_ASSISTANT_URL or not HOME_ASSISTANT_TOKEN:
-        logger.warning("HA URL/Token not configured, skipping reload")
-        return False
-    
-    try:
-        async with aiohttp.ClientSession() as session:
-            async with session.post(
-                f"{HOME_ASSISTANT_URL}/api/services/automation/reload",
-                headers={"Authorization": f"Bearer {HOME_ASSISTANT_TOKEN}"},
-                timeout=aiohttp.ClientTimeout(total=30)
-            ) as resp:
-                return resp.status == 200
-    except Exception as e:
-        logger.error(f"HA reload error: {e}")
-        return False
+    """Reload Home Assistant automations via API"""
+    return await call_ha_service(
+        base_url=HOME_ASSISTANT_URL,
+        token=HOME_ASSISTANT_TOKEN,
+        domain="automation",
+        service="reload"
+    )
 
 
 async def ensure_automations_directory() -> bool:

@@ -153,8 +153,9 @@ services:
     build: ./services/proactive_engine
     environment:
       - REDIS_URL=redis://redis:6379
-      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
-      - CLAUDE_MODEL=${CLAUDE_MODEL:-claude-sonnet-4-20250514}
+      - LLM_SERVICE_URL=http://llm_service:8000
+      # - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      # - CLAUDE_MODEL=${CLAUDE_MODEL:-claude-sonnet-4-20250514}
       - HOME_ASSISTANT_URL=${HOME_ASSISTANT_URL}
       - HOME_ASSISTANT_TOKEN=${HOME_ASSISTANT_TOKEN}
     ports:
@@ -210,12 +211,47 @@ services:
       - HEALTH_MONITOR_URL=http://health_monitor:8003
       - HOME_ASSISTANT_URL=${HOME_ASSISTANT_URL}
       - HOME_ASSISTANT_TOKEN=${HOME_ASSISTANT_TOKEN}
-      - HA_CONFIG_DIR=/media/pi/NextCloud/homeassistant
+      - HA_CONFIG_DIR=${HA_CONFIG_DIR}
     ports:
       - "8014:8000"
     depends_on:
       - redis
       - health_monitor
+    networks:
+      - claudehome_net
+    restart: unless-stopped
+
+  context_builder:
+    container_name: claudehome_context_builder
+    build: ./services/context_builder
+    environment:
+      - REDIS_URL=redis://redis:6379
+      - HEALTH_MONITOR_URL=http://health_monitor:8003
+      - HA_CONFIG_DIR=${HA_CONFIG_DIR}
+      - CONTEXT_REFRESH_INTERVAL=900
+    ports:
+      - "8015:8000"
+    depends_on:
+      - redis
+      - health_monitor
+    networks:
+      - claudehome_net
+    restart: unless-stopped
+
+  llm_service:
+    container_name: claudehome_llm_service
+    build: ./services/llm_service
+    environment:
+      - LLM_PROVIDER=${LLM_PROVIDER}
+      - LITELLM_URL=${LITELLM_URL}
+      - LITELLM_MODEL=${LITELLM_MODEL}
+      - LITELLM_API_KEY=${LITELLM_API_KEY}
+      - OLLAMA_URL=${OLLAMA_URL}
+      - OLLAMA_MODEL=${OLLAMA_MODEL}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+    ports:
+      - "8016:8000"
     networks:
       - claudehome_net
     restart: unless-stopped

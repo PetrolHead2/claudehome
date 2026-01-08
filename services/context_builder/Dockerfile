@@ -2,9 +2,6 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
-# Copy shared modules first
-COPY ../shared /app/shared
-
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 

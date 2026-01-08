@@ -1,2 +1,6 @@
-curl http://localhost:8012/suggestions/pending
-{"count":1,"suggestions":[{"suggestion_id":"test_discord_001","title":"Evening Welcome Lights","description":"Turn on entrance lights when you arrive home in the evening","pattern_detected":"front_door opens after 18:00 → no lights on","confidence":0.92,"occurrences":8,"automation_yaml":"trigger:\n  - platform: state\n    entity_id: binary_sensor.front_door\n    to: \"on\"\n  - platform: sun\n    event: sunset\n    offset: \"-00:30:00\"\ncondition:\n  - condition: sun\n    after: sunset\naction:\n  - service: light.turn_on\n    target:\n      entity_id: light.entrance\n    data:\n      brightness_pct: 80\n      transition: 2","created_at":"2026-01-08T14:00:00Z","status":"pending"}]}root@debian:/opt/claudehome# 
+grep -r "HOME_ASSISTANT_URL" services/*/main.pypy
+services/automation_deployer/main.py:HOME_ASSISTANT_URL = os.environ.get("HOME_ASSISTANT_URL")
+services/automation_deployer/main.py:        base_url=HOME_ASSISTANT_URL,
+services/proactive_engine/main.py:HOME_ASSISTANT_URL = os.getenv("HOME_ASSISTANT_URL")
+root@debian:/opt/claudehome# grep -r "api/services\|api/states" services/*/main.py
+root@debian:/opt/claudehome# 
