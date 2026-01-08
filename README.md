@@ -2,7 +2,7 @@
 
 Autonomous, privacy-first smart home intelligence system for Home Assistant.
 
-## Overview
+## Overview 
 
 ClaudeHome uses Claude AI to provide intelligent automation suggestions, anomaly detection, and system health monitoring for your Home Assistant installation. All data is anonymized before leaving your local network.
 
