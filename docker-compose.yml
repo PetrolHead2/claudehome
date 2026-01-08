@@ -1,11 +1,8 @@
 version: '3.8'
 
-# ClaudeHome Service Stack
-# Autonomous smart home intelligence for Home Assistant
-
 services:
-  # Redis - Message queue for event processing
   redis:
+    # Redis - Message queue for event processing
     image: redis:7-alpine
     container_name: claudehome_redis
     restart: unless-stopped
@@ -50,6 +47,19 @@ services:
       - HA_CONFIG_DIR=/config
       - REDIS_URL=redis://redis:6379
       - POLL_INTERVAL=1.0
+      - REDIS_URL=redis://redis:6379
+      - HOME_ASSISTANT_URL=${HOME_ASSISTANT_URL}
+      - HOME_ASSISTANT_TOKEN=${HOME_ASSISTANT_TOKEN}
+      - MARIADB_HOST=${MARIADB_HOST}
+      - MARIADB_PORT=${MARIADB_PORT}
+      - MARIADB_USER=${MARIADB_USER}
+      - MARIADB_PASSWORD=${MARIADB_PASSWORD}
+      - MARIADB_DATABASE=${MARIADB_DATABASE}
+      - MQTT_BROKER=${MQTT_BROKER}
+      - MQTT_PORT=${MQTT_PORT}
+      - MQTT_USER=${MQTT_USER}
+      - MQTT_PASSWORD=${MQTT_PASSWORD}
+      - DB_POLL_INTERVAL=${DB_POLL_INTERVAL:-30.0}
     volumes:
       - /media/pi/NextCloud/homeassistant:/config:ro
     depends_on:
@@ -74,8 +84,15 @@ services:
       - HA_CONFIG_DIR=/config
       - DISCORD_WEBHOOK=${DISCORD_WEBHOOK:-}
       - CHECK_INTERVAL=10.0
+      - REDIS_URL=redis://redis:6379
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - SSH_HOST=${SSH_HOST}
+      - SSH_PORT=${SSH_PORT:-22}
+      - SSH_USER=${SSH_USER:-root}
+      - SSH_KEY_PATH=/app/.ssh/ha_key
     volumes:
       - /media/pi/NextCloud/homeassistant:/config:ro
+      - ./ssh_key:/app/.ssh/ha_key:ro
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8003/health"]
       interval: 30s
@@ -90,7 +107,7 @@ services:
     container_name: claudehome_orchestrator
     restart: unless-stopped
     ports:
-      - "8000:8000"
+      - "8010:8000"
     environment:
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
       - REDIS_URL=redis://redis:6379
@@ -114,6 +131,92 @@ services:
       retries: 3
     networks:
       - claudehome_net
+
+  triage_engine:
+    build: ./services/triage_engine
+    environment:
+      - REDIS_URL=redis://redis:6379
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - CLAUDE_MODEL=${CLAUDE_MODEL:-claude-sonnet-4-20250514}
+    ports:
+      - "8011:8000"
+    depends_on:
+      - redis
+    restart: unless-stopped
+    container_name: claudehome_triage_engine
+    networks:
+    - claudehome_net
+
+  proactive_engine:
+    build: ./services/proactive_engine
+    environment:
+      - REDIS_URL=redis://redis:6379
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - CLAUDE_MODEL=${CLAUDE_MODEL:-claude-sonnet-4-20250514}
+      - HOME_ASSISTANT_URL=${HOME_ASSISTANT_URL}
+      - HOME_ASSISTANT_TOKEN=${HOME_ASSISTANT_TOKEN}
+    ports:
+      - "8012:8000"
+    depends_on:
+      - redis
+      - triage_engine
+    restart: unless-stopped
+    container_name: claudehome_proactive_engine
+    networks:
+      - claudehome_net
+
+  anomaly_detector:
+    container_name: claudehome_anomaly_detector
+    build: ./services/anomaly_detector
+    environment:
+      - REDIS_URL=redis://redis:6379
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - CLAUDE_MODEL=claude-sonnet-4-20250514
+    ports:
+      - "8013:8000"
+    depends_on:
+      - redis
+      - triage_engine
+    networks:
+      - claudehome_net
+    restart: unless-stopped
+
+  discord_bot:
+    container_name: claudehome_discord_bot
+    build: ./services/discord_bot
+    environment:
+      - REDIS_URL=redis://redis:6379
+      - DISCORD_TOKEN=${DISCORD_TOKEN}
+      - DISCORD_GUILD_ID=${DISCORD_GUILD_ID}
+      - ORCHESTRATOR_URL=http://orchestrator:8000
+      - PROACTIVE_ENGINE_URL=http://proactive_engine:8000
+      - ANOMALY_DETECTOR_URL=http://anomaly_detector:8000
+    depends_on:
+      - redis
+      - orchestrator
+      - proactive_engine
+      - anomaly_detector
+    networks:
+      - claudehome_net
+    restart: unless-stopped
+
+  automation_deployer:
+    container_name: claudehome_automation_deployer
+    build: ./services/automation_deployer
+    environment:
+      - REDIS_URL=redis://redis:6379
+      - HEALTH_MONITOR_URL=http://health_monitor:8003
+      - HOME_ASSISTANT_URL=${HOME_ASSISTANT_URL}
+      - HOME_ASSISTANT_TOKEN=${HOME_ASSISTANT_TOKEN}
+      - HA_CONFIG_DIR=/media/pi/NextCloud/homeassistant
+    ports:
+      - "8014:8000"
+    depends_on:
+      - redis
+      - health_monitor
+    networks:
+      - claudehome_net
+    restart: unless-stopped
 
 volumes:
   redis_data:

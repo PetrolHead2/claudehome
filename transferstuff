@@ -1,0 +1,15 @@
+# Check if the file exists
+curl -X POST http://localhost:8003/ssh/execute \
+  -H "Content-Type: application/json" \
+  -d '{"command": "ls -la /media/pi/NextCloud/homeassistant/automations/claudehome/"}'
+
+# Read the created automation file
+curl -X POST http://localhost:8003/ssh/execute \
+  -H "Content-Type: application/json" \
+  -d '{"command": "cat /media/pi/NextCloud/homeassistant/automations/claudehome/claudehome_test_automation_20260108_104108.yaml"}'
+
+# Check if git is initialized
+curl -X POST http://localhost:8003/ssh/execute \
+  -H "Content-Type: application/json" \
+  -d '{"command": "cd /media/pi/NextCloud/homeassistant && git status"}'
+{"exit_code":0,"output":"total 12\ndrwxr-xr-x 2 root root 4096 Jan  8 11:41 .\ndrwxr-xr-x 4 root root 4096 Jan  8 11:41 ..\n-rw-r--r-- 1 root root  361 Jan  8 11:41 claudehome_test_automation_20260108_104108.yaml\n","error":"","success":true}{"exit_code":0,"output":"# ClaudeHome Generated Automation\n# Deployed: 2026-01-08T10:41:08.621926\n# Suggestion ID: test_001\n\n- description: 'A simple test automation'\nalias: 'Test Automation'\ntrigger:\n  - platform: state\n    entity_id: sun.sun\n    to: \"below_horizon\"\naction:\n  - service: notify.persistent_notification\n    data:\n      message: \"ClaudeHome test automation triggered!\"\n\n","error":"","success":true}{"exit_code":128,"output":"","error":"fatal: not a git repository (or any parent up to mount point /media/pi)\nStopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).\n","success":false}root@debian:/opt/claudehome# 

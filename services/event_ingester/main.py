@@ -2,22 +2,21 @@
 """
 Event Ingester Service for ClaudeHome
 
-Monitors Home Assistant for state changes and pushes events to Redis queue
-for processing by other ClaudeHome services.
+Monitors Home Assistant via MQTT (real-time) and MariaDB (backup)
 """
 
 import asyncio
 import json
 import logging
 import os
-import sqlite3
 import time
-from datetime import datetime, timedelta
-from pathlib import Path
-from typing import Optional
+from datetime import datetime
+from typing import Optional, Set
 from contextlib import asynccontextmanager
 
 import redis.asyncio as redis
+import aiomysql
+import paho.mqtt.client as mqtt
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 
@@ -29,24 +28,43 @@ logging.basicConfig(
 logger = logging.getLogger("event_ingester")
 
 # Configuration
-HA_CONFIG_DIR = os.environ.get("HA_CONFIG_DIR", "/media/pi/NextCloud/homeassistant")
 REDIS_URL = os.environ.get("REDIS_URL", "redis://localhost:6379")
-POLL_INTERVAL = float(os.environ.get("POLL_INTERVAL", "1.0"))
-DB_PATH = Path(HA_CONFIG_DIR) / "home-assistant_v2.db"
+DB_POLL_INTERVAL = float(os.environ.get("DB_POLL_INTERVAL", "30.0"))  # Reduced to 30s
+
+# MariaDB configuration
+MARIADB_HOST = os.environ.get("MARIADB_HOST")
+MARIADB_PORT = int(os.environ.get("MARIADB_PORT", "3306"))
+MARIADB_USER = os.environ.get("MARIADB_USER")
+MARIADB_PASSWORD = os.environ.get("MARIADB_PASSWORD")
+MARIADB_DATABASE = os.environ.get("MARIADB_DATABASE", "homeassistant")
+
+# MQTT configuration
+MQTT_BROKER = os.environ.get("MQTT_BROKER")
+MQTT_PORT = int(os.environ.get("MQTT_PORT", "1883"))
+MQTT_USER = os.environ.get("MQTT_USER", "")
+MQTT_PASSWORD = os.environ.get("MQTT_PASSWORD", "")
 
 # Global state
 redis_client: Optional[redis.Redis] = None
+db_pool: Optional[aiomysql.Pool] = None
+mqtt_client: Optional[mqtt.Client] = None
 last_state_id: int = 0
 running: bool = False
+processed_state_ids: Set[int] = set()  # Deduplication
+main_loop: Optional[asyncio.AbstractEventLoop] = None  # ADD THIS LINE
 
 
 class EventStats(BaseModel):
     """Event ingestion statistics."""
     events_processed: int = 0
+    mqtt_events: int = 0
+    db_events: int = 0
     last_event_time: Optional[str] = None
     last_state_id: int = 0
     uptime_seconds: float = 0
     redis_connected: bool = False
+    mariadb_connected: bool = False
+    mqtt_connected: bool = False
 
 
 stats = EventStats()
@@ -56,9 +74,11 @@ start_time = time.time()
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Manage application lifespan."""
-    global redis_client, running
+    global redis_client, db_pool, mqtt_client, running, main_loop
+    
+    main_loop = asyncio.get_running_loop()
 
-    # Startup
+    # Connect to Redis
     try:
         redis_client = redis.from_url(REDIS_URL, decode_responses=True)
         await redis_client.ping()
@@ -68,7 +88,29 @@ async def lifespan(app: FastAPI):
         logger.warning(f"Redis not available: {e}")
         stats.redis_connected = False
 
-    # Start background polling
+    # Connect to MariaDB
+    if MARIADB_HOST:
+        try:
+            db_pool = await aiomysql.create_pool(
+                host=MARIADB_HOST,
+                port=MARIADB_PORT,
+                user=MARIADB_USER,
+                password=MARIADB_PASSWORD,
+                db=MARIADB_DATABASE,
+                maxsize=5,
+                autocommit=True
+            )
+            logger.info(f"Connected to MariaDB at {MARIADB_HOST}:{MARIADB_PORT}")
+            stats.mariadb_connected = True
+        except Exception as e:
+            logger.error(f"Failed to connect to MariaDB: {e}")
+            stats.mariadb_connected = False
+
+    # Setup MQTT
+    if MQTT_BROKER:
+        setup_mqtt()
+
+    # Start background polling (reduced frequency - MQTT is primary)
     running = True
     asyncio.create_task(poll_state_changes())
 
@@ -78,125 +120,229 @@ async def lifespan(app: FastAPI):
     running = False
     if redis_client:
         await redis_client.close()
+    if db_pool:
+        db_pool.close()
+        await db_pool.wait_closed()
+    if mqtt_client:
+        mqtt_client.loop_stop()
+        mqtt_client.disconnect()
 
 
 app = FastAPI(
     title="ClaudeHome Event Ingester",
-    description="Monitors Home Assistant state changes and queues events",
-    version="1.0.0",
+    description="Monitors Home Assistant state changes via MQTT and MariaDB",
+    version="2.0.0",
     lifespan=lifespan
 )
 
 
-def get_db_connection() -> Optional[sqlite3.Connection]:
-    """Get connection to Home Assistant database."""
-    if not DB_PATH.exists():
-        logger.warning(f"Database not found at {DB_PATH}")
-        return None
+def setup_mqtt():
+    """Setup MQTT client for real-time events."""
+    global mqtt_client
+
+    def on_connect(client, userdata, flags, rc):
+        if rc == 0:
+            logger.info(f"Connected to MQTT broker at {MQTT_BROKER}:{MQTT_PORT}")
+            stats.mqtt_connected = True
+            # Subscribe to all state changes
+            client.subscribe("homeassistant/+/+/state")
+            client.subscribe("homeassistant/+/+/+/state")
+            logger.info("Subscribed to Home Assistant state topics")
+        else:
+            logger.error(f"MQTT connection failed with code {rc}")
+            stats.mqtt_connected = False
+
+    def on_disconnect(client, userdata, rc):
+        logger.warning(f"MQTT disconnected with code {rc}")
+        stats.mqtt_connected = False
+
+    def on_message(client, userdata, msg):
+        try:
+            # Parse MQTT message
+            payload = msg.payload.decode()
+            
+            # Extract entity_id from topic
+            # Topic format: homeassistant/sensor/bedroom_temp/state
+            parts = msg.topic.split('/')
+            if len(parts) >= 4:
+                domain = parts[1]
+                object_id = parts[2]
+                entity_id = f"{domain}.{object_id}"
+            else:
+                logger.warning(f"Unexpected topic format: {msg.topic}")
+                return
+
+            # Create event
+            event = {
+                "type": "state_changed",
+                "entity_id": entity_id,
+                "state": payload,
+                "timestamp": datetime.now().isoformat(),
+                "source": "mqtt"
+            }
+
+            # Schedule in the main event loop
+            if main_loop:
+                asyncio.run_coroutine_threadsafe(process_mqtt_event(event), main_loop)
+            # Get the running event loop and schedule the coroutine
+            # loop = asyncio.get_event_loop()
+            # asyncio.run_coroutine_threadsafe(process_mqtt_event(event), loop)
+
+        except Exception as e:
+            logger.error(f"MQTT message processing error: {e}")
+
+    mqtt_client = mqtt.Client()
+    mqtt_client.on_connect = on_connect
+    mqtt_client.on_disconnect = on_disconnect
+    mqtt_client.on_message = on_message
+
+    if MQTT_USER:
+        mqtt_client.username_pw_set(MQTT_USER, MQTT_PASSWORD)
 
     try:
-        conn = sqlite3.connect(str(DB_PATH), timeout=5.0)
-        conn.row_factory = sqlite3.Row
-        return conn
+        mqtt_client.connect(MQTT_BROKER, MQTT_PORT, 60)
+        mqtt_client.loop_start()
+        logger.info("MQTT client started")
     except Exception as e:
-        logger.error(f"Database connection error: {e}")
-        return None
+        logger.error(f"Failed to connect to MQTT: {e}")
+        stats.mqtt_connected = False
+
+
+async def process_mqtt_event(event: dict):
+    """Process event from MQTT (real-time)."""
+    global stats
+
+    entity_id = event.get("entity_id")
+
+    # Push to Redis
+    if redis_client and stats.redis_connected:
+        try:
+            await redis_client.lpush("claudehome:events", json.dumps(event))
+            await redis_client.ltrim("claudehome:events", 0, 9999)
+            logger.debug(f"MQTT event queued: {entity_id}")
+        except Exception as e:
+            logger.error(f"Redis push error: {e}")
+            stats.redis_connected = False
+
+    stats.events_processed += 1
+    stats.mqtt_events += 1
+    stats.last_event_time = event["timestamp"]
 
 
 async def poll_state_changes():
-    """Poll database for state changes."""
-    global last_state_id
+    """Poll MariaDB as backup (catches anything MQTT missed)."""
+    global last_state_id, processed_state_ids
 
-    logger.info("Starting state change polling")
+    logger.info(f"Starting database backup polling (every {DB_POLL_INTERVAL}s)")
+
+    if not db_pool:
+        logger.error("Database pool not available")
+        return
 
     while running:
         try:
-            conn = get_db_connection()
-            if not conn:
-                await asyncio.sleep(POLL_INTERVAL * 5)
-                continue
+            async with db_pool.acquire() as conn:
+                async with conn.cursor(aiomysql.DictCursor) as cursor:
+                    # Initialize position
+                    if last_state_id == 0:
+                        await cursor.execute("SELECT MAX(state_id) FROM states")
+                        result = await cursor.fetchone()
+                        if result and result.get('MAX(state_id)'):
+                            last_state_id = result['MAX(state_id)']
+                            stats.last_state_id = last_state_id
+                            logger.info(f"Starting from state_id: {last_state_id}")
 
-            cursor = conn.cursor()
+                    # Query for new states
+                    query = """
+                        SELECT
+                            s.state_id,
+                            sm.entity_id,
+                            s.state,
+                            s.attributes,
+                            s.last_updated_ts
+                        FROM states s
+                        LEFT JOIN states_meta sm ON s.metadata_id = sm.metadata_id
+                        WHERE s.state_id > %s
+                        ORDER BY s.state_id ASC
+                        LIMIT 100
+                    """
+                    
+                    await cursor.execute(query, (last_state_id,))
+                    rows = await cursor.fetchall()
 
-            # Get the latest state_id if we don't have one
-            if last_state_id == 0:
-                cursor.execute("SELECT MAX(state_id) FROM states")
-                result = cursor.fetchone()
-                if result and result[0]:
-                    last_state_id = result[0]
-                    stats.last_state_id = last_state_id
-                    logger.info(f"Starting from state_id: {last_state_id}")
+                    new_events = 0
+                    for row in rows:
+                        state_id = row["state_id"]
+                        
+                        # Skip if already processed via MQTT
+                        if state_id in processed_state_ids:
+                            last_state_id = state_id
+                            continue
 
-            # Query for new states
-            cursor.execute("""
-                SELECT
-                    s.state_id,
-                    s.entity_id,
-                    s.state,
-                    s.attributes,
-                    s.last_changed_ts,
-                    s.last_updated_ts
-                FROM states s
-                WHERE s.state_id > ?
-                ORDER BY s.state_id ASC
-                LIMIT 100
-            """, (last_state_id,))
+                        await process_db_event(row)
+                        last_state_id = state_id
+                        stats.last_state_id = last_state_id
+                        new_events += 1
 
-            rows = cursor.fetchall()
-            conn.close()
+                        # Add to dedup set (limit size to 10000)
+                        processed_state_ids.add(state_id)
+                        if len(processed_state_ids) > 10000:
+                            # Remove oldest half
+                            to_remove = sorted(processed_state_ids)[:5000]
+                            processed_state_ids.difference_update(to_remove)
 
-            for row in rows:
-                await process_state_change(dict(row))
-                last_state_id = row["state_id"]
-                stats.last_state_id = last_state_id
+                    if new_events > 0:
+                        logger.info(f"DB backup caught {new_events} missed events")
 
         except Exception as e:
-            logger.error(f"Polling error: {e}")
+            logger.error(f"DB polling error: {e}")
+            stats.mariadb_connected = False
+            await asyncio.sleep(DB_POLL_INTERVAL * 2)
+            continue
 
-        await asyncio.sleep(POLL_INTERVAL)
+        await asyncio.sleep(DB_POLL_INTERVAL)
 
 
-async def process_state_change(state: dict):
-    """Process a single state change event."""
+async def process_db_event(state: dict):
+    """Process event from database (backup)."""
     global stats
 
     entity_id = state.get("entity_id", "unknown")
 
-    # Create event payload
     event = {
         "type": "state_changed",
         "entity_id": entity_id,
         "state": state.get("state"),
         "timestamp": datetime.now().isoformat(),
-        "state_id": state.get("state_id")
+        "state_id": state.get("state_id"),
+        "source": "database"
     }
 
-    # Parse attributes if present
+    # Parse attributes
     if state.get("attributes"):
         try:
             event["attributes"] = json.loads(state["attributes"])
         except (json.JSONDecodeError, TypeError):
             pass
 
-    # Push to Redis queue if connected
+    # Push to Redis
     if redis_client and stats.redis_connected:
         try:
             await redis_client.lpush("claudehome:events", json.dumps(event))
-            await redis_client.ltrim("claudehome:events", 0, 9999)  # Keep last 10k events
-            logger.debug(f"Queued event for {entity_id}")
+            await redis_client.ltrim("claudehome:events", 0, 9999)
+            logger.debug(f"DB event queued: {entity_id}")
         except Exception as e:
             logger.error(f"Redis push error: {e}")
             stats.redis_connected = False
 
     stats.events_processed += 1
+    stats.db_events += 1
     stats.last_event_time = event["timestamp"]
 
 
 @app.get("/health")
 async def health_check():
     """Health check endpoint."""
-    db_available = DB_PATH.exists()
-
     redis_ok = False
     if redis_client:
         try:
@@ -207,11 +353,12 @@ async def health_check():
             stats.redis_connected = False
 
     return {
-        "status": "healthy" if db_available else "degraded",
-        "database": str(DB_PATH),
-        "database_available": db_available,
+        "status": "healthy",
+        "mariadb_connected": stats.mariadb_connected,
+        "mqtt_connected": stats.mqtt_connected,
         "redis_connected": redis_ok,
-        "polling": running
+        "polling": running,
+        "primary_source": "mqtt" if stats.mqtt_connected else "database"
     }
 
 
@@ -237,7 +384,7 @@ async def queue_length():
 
 @app.get("/queue/peek")
 async def peek_queue(count: int = 10):
-    """Peek at events in the queue without removing them."""
+    """Peek at events in the queue."""
     if not redis_client:
         raise HTTPException(status_code=503, detail="Redis not connected")
 
@@ -264,28 +411,6 @@ async def clear_queue():
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@app.post("/reset")
-async def reset_position():
-    """Reset the state position to start from latest."""
-    global last_state_id
-
-    conn = get_db_connection()
-    if not conn:
-        raise HTTPException(status_code=503, detail="Database not available")
-
-    cursor = conn.cursor()
-    cursor.execute("SELECT MAX(state_id) FROM states")
-    result = cursor.fetchone()
-    conn.close()
-
-    if result and result[0]:
-        last_state_id = result[0]
-        stats.last_state_id = last_state_id
-        return {"status": "reset", "new_position": last_state_id}
-
-    raise HTTPException(status_code=500, detail="Could not get max state_id")
-
-
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8002)
+    uvicorn.run(app, host="0.0.0.0", port=8000)

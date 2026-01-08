@@ -10,7 +10,12 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY main.py .
 
 # Create non-root user
-RUN useradd -m -u 1000 appuser
+# RUN useradd -m -u 1000 appuser
+# Create non-root user and fix ownership
+RUN useradd -m -u 1000 appuser && \
+    chown -R appuser:appuser /app
+
+
 USER appuser
 
 EXPOSE 8000

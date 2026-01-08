@@ -9,8 +9,12 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy application
 COPY main.py .
 
-# Create non-root user
-RUN useradd -m -u 1000 appuser
+# Create SSH directory and set permissions BEFORE switching user
+RUN mkdir -p /app/.ssh && chmod 700 /app/.ssh
+
+# Add this section (FIX):
+RUN useradd -m -u 1000 appuser && \
+    chown -R appuser:appuser /app
 USER appuser
 
 EXPOSE 8003
