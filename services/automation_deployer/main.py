@@ -13,6 +13,7 @@ import time
 from typing import Dict, Any, Optional
 from datetime import datetime
 from contextlib import asynccontextmanager
+import urllib.parse
 
 import redis.asyncio as redis
 import aiohttp
@@ -96,18 +97,37 @@ async def ssh_write_file(path: str, content: str) -> bool:
 async def git_commit(message: str) -> bool:
     """Commit changes via health_monitor."""
     try:
+        # Encode message for URL
+        import urllib.parse
+        encoded_message = urllib.parse.quote(message)
+        
+        url = f"{HEALTH_MONITOR_URL}/git/commit?message={encoded_message}"
+        logger.info(f"Calling git commit: {url}")
+        
         async with aiohttp.ClientSession() as session:
             async with session.post(
-                f"{HEALTH_MONITOR_URL}/git/commit",
-                params={"message": message},
+                url,
                 timeout=aiohttp.ClientTimeout(total=30)
             ) as resp:
                 if resp.status != 200:
-                    raise Exception(f"Git commit failed: {resp.status}")
+                    logger.error(f"Git commit HTTP error: {resp.status}")
+                    text = await resp.text()
+                    logger.error(f"Response: {text}")
+                    return False
+                
                 result = await resp.json()
-                return result.get("success", False)
+                logger.info(f"Git commit response: {result}")
+                
+                success = result.get("success", False)
+                if success:
+                    logger.info(f"Git commit successful: {result.get('output', '')}")
+                else:
+                    error_msg = result.get('error', result.get('output', 'Unknown error'))
+                    logger.error(f"Git commit returned success=false: {error_msg}")
+                return success
+                
     except Exception as e:
-        logger.error(f"Git commit error: {e}")
+        logger.error(f"Git commit exception: {e}", exc_info=True)
         return False
 
 
@@ -209,8 +229,9 @@ async def deploy_automation(request: DeploymentRequest) -> DeploymentResult:
             yaml_content = f"description: '{request.description}'\n{yaml_content}"
         
         # Wrap in list format for Home Assistant
-        full_yaml = f"# ClaudeHome Generated Automation\n# Deployed: {datetime.utcnow().isoformat()}\n# Suggestion ID: {request.suggestion_id}\n\n- {yaml_content}\n"
-        
+        # full_yaml = f"# ClaudeHome Generated Automation\n# Deployed: {datetime.utcnow().isoformat()}\n# Suggestion ID: {request.suggestion_id}\n\n- {yaml_content}\n"
+        # DON'T wrap in list format - include_dir_list does that automatically
+        full_yaml = f"# ClaudeHome Generated Automation\n# Deployed: {datetime.utcnow().isoformat()}\n# Suggestion ID: {request.suggestion_id}\n\n{yaml_content}\n"
         logger.info(f"Deploying automation to: {file_path}")
         
         # Write file via SSH

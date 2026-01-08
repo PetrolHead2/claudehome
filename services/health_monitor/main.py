@@ -499,11 +499,42 @@ async def list_dir(path: str):
 
 
 @app.post("/git/commit")
-async def commit_changes(message: str, files: List[str] = None):
+async def commit_changes(message: str):
     """Commit changes to git."""
-    success = await git_commit(message, files)
-    return {"success": success, "message": message}
-
+    try:
+        # Escape single quotes in the message for shell safety
+        safe_message = message.replace("'", "'\\''")
+        
+        # Build the full git command
+        command = f"cd {HA_CONFIG_DIR} && git add . && git commit -m '{safe_message}'"
+        
+        logger.info(f"Executing git commit with message: {message}")
+        result = await ssh_execute(command)
+        
+        logger.info(f"Git result: exit_code={result['exit_code']}, success={result['success']}")
+        if result.get('output'):
+            logger.info(f"Git output: {result['output']}")
+        if result.get('error'):
+            logger.error(f"Git error: {result['error']}")
+        
+        # Git commit returns exit code 0 on success
+        success = result.get("exit_code") == 0 and result.get("success", False)
+        
+        return {
+            "success": success,
+            "message": message,
+            "output": result.get("output", ""),
+            "error": result.get("error", "")
+        }
+        
+    except Exception as e:
+        logger.error(f"Git commit exception: {e}", exc_info=True)
+        return {
+            "success": False,
+            "message": message,
+            "error": str(e),
+            "output": ""
+        }
 
 if __name__ == "__main__":
     import uvicorn

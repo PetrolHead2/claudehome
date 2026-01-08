@@ -81,7 +81,9 @@ services:
     ports:
       - "8003:8003"
     environment:
-      - HA_CONFIG_DIR=/config
+      # - HA_CONFIG_DIR=/config
+      # - HA_CONFIG_DIR=/media/pi/NextCloud/homeassistant
+      - HA_CONFIG_DIR=${HA_CONFIG_DIR}
       - DISCORD_WEBHOOK=${DISCORD_WEBHOOK:-}
       - CHECK_INTERVAL=10.0
       - REDIS_URL=redis://redis:6379
