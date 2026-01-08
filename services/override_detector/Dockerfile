@@ -2,14 +2,10 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
-COPY services/automation_deployer/requirements.txt .
+COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy shared module from root
-COPY services/shared/ /app/shared/
-
-# Copy main.py
-COPY services/automation_deployer/main.py .
+COPY main.py .
 
 RUN useradd -m -u 1000 appuser && \
     chown -R appuser:appuser /app

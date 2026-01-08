@@ -1,6 +1,48 @@
-grep -r "HOME_ASSISTANT_URL" services/*/main.pypy
-services/automation_deployer/main.py:HOME_ASSISTANT_URL = os.environ.get("HOME_ASSISTANT_URL")
-services/automation_deployer/main.py:        base_url=HOME_ASSISTANT_URL,
-services/proactive_engine/main.py:HOME_ASSISTANT_URL = os.getenv("HOME_ASSISTANT_URL")
-root@debian:/opt/claudehome# grep -r "api/services\|api/states" services/*/main.py
+# Override #2
+docker compose exec redis redis-cli PUBLISH "claudehome:automation_triggered" '{
+  "automation_id": "claudehome_test_morning_lights_20260108",
+  "entity_id": "light.kitchen_roof_1",
+  "action": "turn_on",
+  "value": 100,
+  "timestamp": "'$(date -u +%Y-%m-%dT%H:%M:%S)'"
+}'
+sleep 10
+docker compose exec redis redis-cli PUBLISH "claudehome:user_action" '{
+  "entity_id": "light.kitchen_roof_1",
+  "action": "turn_off",
+  "timestamp": "'$(date -u +%Y-%m-%dT%H:%M:%S)'"
+}'
+
+sleep 5
+
+# Override #3
+docker compose exec redis redis-cli PUBLISH "claudehome:automation_triggered" '{
+  "automation_id": "claudehome_test_morning_lights_20260108",
+  "entity_id": "light.kitchen_roof_1",
+  "action": "turn_on",
+  "value": 100,
+  "timestamp": "'$(date -u +%Y-%m-%dT%H:%M:%S)'"
+}'
+sleep 10
+docker compose exec redis redis-cli PUBLISH "claudehome:user_action" '{
+  "entity_id": "light.kitchen_roof_1",
+  "action": "turn_off",
+  "timestamp": "'$(date -u +%Y-%m-%dT%H:%M:%S)'"
+}'
+
+docker compose logs --tail=30 override_detector | grep "??"
+WARN[0000] The "DISCORD_GUILD_ID" variable is not set. Defaulting to a blank string. 
+WARN[0000] /opt/claudehome/docker-compose.yml: the attribute `version` is obsolete, it will be ignored, please remove it to avoid potential confusion 
+(integer) 1
+WARN[0000] The "DISCORD_GUILD_ID" variable is not set. Defaulting to a blank string. 
+WARN[0000] /opt/claudehome/docker-compose.yml: the attribute `version` is obsolete, it will be ignored, please remove it to avoid potential confusion 
+(integer) 1
+WARN[0000] The "DISCORD_GUILD_ID" variable is not set. Defaulting to a blank string. 
+WARN[0000] /opt/claudehome/docker-compose.yml: the attribute `version` is obsolete, it will be ignored, please remove it to avoid potential confusion 
+(integer) 1
+WARN[0000] The "DISCORD_GUILD_ID" variable is not set. Defaulting to a blank string. 
+WARN[0000] /opt/claudehome/docker-compose.yml: the attribute `version` is obsolete, it will be ignored, please remove it to avoid potential confusion 
+(integer) 1
+{"count":1,"rules":[{"rule_id":"rule_claudehome_test_morning_lights_20260108_light.kitchen_roof_1_20260108","entity_id":"light.kitchen_roof_1","automation_id":"claudehome_test_morning_lights_20260108","rule_type":"time_block","condition":{"entity_id":"light.kitchen_roof_1","action":"turn_on","time_range":"22:00-23:00","block":true},"reason":"User repeatedly turns off light.kitchen_roof_1 around 22:00 (3 times)","override_count":3,"created_at":"2026-01-08T22:57:16.301794","confidence":0.6}]}WARN[0000] The "DISCORD_GUILD_ID" variable is not set. Defaulting to a blank string. 
+WARN[0000] /opt/claudehome/docker-compose.yml: the attribute `version` is obsolete, it will be ignored, please remove it to avoid potential confusion 
 root@debian:/opt/claudehome# 

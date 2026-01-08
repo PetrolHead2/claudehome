@@ -205,13 +205,17 @@ services:
 
   automation_deployer:
     container_name: claudehome_automation_deployer
-    build: ./services/automation_deployer
+    # build: ./services/automation_deployer
+    build:
+      context: .
+      dockerfile: services/automation_deployer/Dockerfile
     environment:
       - REDIS_URL=redis://redis:6379
       - HEALTH_MONITOR_URL=http://health_monitor:8003
       - HOME_ASSISTANT_URL=${HOME_ASSISTANT_URL}
       - HOME_ASSISTANT_TOKEN=${HOME_ASSISTANT_TOKEN}
       - HA_CONFIG_DIR=${HA_CONFIG_DIR}
+      - OUTCOME_MONITOR_URL=http://outcome_monitor:8000
     ports:
       - "8014:8000"
     depends_on:
@@ -252,6 +256,41 @@ services:
       - OPENAI_API_KEY=${OPENAI_API_KEY}
     ports:
       - "8016:8000"
+    networks:
+      - claudehome_net
+    restart: unless-stopped
+
+  outcome_monitor:
+    container_name: claudehome_outcome_monitor
+    build: ./services/outcome_monitor
+    environment:
+      - REDIS_URL=redis://redis:6379
+      - CONTEXT_BUILDER_URL=http://context_builder:8000
+      - LLM_SERVICE_URL=http://llm_service:8000
+      - MONITORING_DURATION_HOURS=48
+    ports:
+      - "8017:8000"
+    depends_on:
+      - redis
+      - llm_service
+      - context_builder
+    networks:
+      - claudehome_net
+    restart: unless-stopped
+
+  override_detector:
+    container_name: claudehome_override_detector
+    build: ./services/override_detector
+    environment:
+      - REDIS_URL=redis://redis:6379
+      - LLM_SERVICE_URL=http://llm_service:8000
+      - OVERRIDE_WINDOW_SECONDS=60
+      - MIN_OVERRIDES_FOR_RULE=3
+    ports:
+      - "8018:8000"
+    depends_on:
+      - redis
+      - llm_service
     networks:
       - claudehome_net
     restart: unless-stopped

@@ -36,6 +36,7 @@ HOME_ASSISTANT_URL = os.environ.get("HOME_ASSISTANT_URL")
 HOME_ASSISTANT_TOKEN = os.environ.get("HOME_ASSISTANT_TOKEN")
 HA_CONFIG_DIR = os.environ.get("HA_CONFIG_DIR", "/media/pi/NextCloud/homeassistant")
 AUTOMATIONS_DIR = f"{HA_CONFIG_DIR}/automations/claudehome"
+OUTCOME_MONITOR_URL = os.getenv("OUTCOME_MONITOR_URL", "http://outcome_monitor:8000")
 
 # Global state
 redis_client: Optional[redis.Redis] = None
@@ -258,6 +259,28 @@ async def deploy_automation(request: DeploymentRequest) -> DeploymentResult:
         # Mark as successful
         result.success = True
         deployments_count += 1
+        
+        # Store deployment result
+        await redis_client.setex(
+            f"claudehome:deployments:{request.suggestion_id}",
+            86400 * 30,
+            json.dumps(result.dict())
+        )
+        
+        # Start outcome monitoring
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.post(
+                    f"{OUTCOME_MONITOR_URL}/monitor/{automation_id}",
+                    params={"suggestion_id": request.suggestion_id},
+                    timeout=aiohttp.ClientTimeout(total=10)
+                ) as resp:
+                    if resp.status == 200:
+                        logger.info(f"Started outcome monitoring for {automation_id}")
+                    else:
+                        logger.warning(f"Failed to start monitoring: {resp.status}")
+        except Exception as e:
+            logger.warning(f"Could not start monitoring (non-fatal): {e}")
         
         logger.info(f"✅ Automation deployed successfully: {automation_id}")
         
