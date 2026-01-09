@@ -1,48 +1,14 @@
-# Override #2
-docker compose exec redis redis-cli PUBLISH "claudehome:automation_triggered" '{
-  "automation_id": "claudehome_test_morning_lights_20260108",
-  "entity_id": "light.kitchen_roof_1",
-  "action": "turn_on",
-  "value": 100,
-  "timestamp": "'$(date -u +%Y-%m-%dT%H:%M:%S)'"
-}'
-sleep 10
-docker compose exec redis redis-cli PUBLISH "claudehome:user_action" '{
-  "entity_id": "light.kitchen_roof_1",
-  "action": "turn_off",
-  "timestamp": "'$(date -u +%Y-%m-%dT%H:%M:%S)'"
-}'
+# 3. Learn baseline (once you have trained models)
+curl -X POST http://localhost:8013/baseline/learn \
+  -H "Content-Type: application/json" \
+  -d '{"entity_id": "light.kitchen_roof_1", "lookback_days": 7}'
 
-sleep 5
-
-# Override #3
-docker compose exec redis redis-cli PUBLISH "claudehome:automation_triggered" '{
-  "automation_id": "claudehome_test_morning_lights_20260108",
-  "entity_id": "light.kitchen_roof_1",
-  "action": "turn_on",
-  "value": 100,
-  "timestamp": "'$(date -u +%Y-%m-%dT%H:%M:%S)'"
-}'
-sleep 10
-docker compose exec redis redis-cli PUBLISH "claudehome:user_action" '{
-  "entity_id": "light.kitchen_roof_1",
-  "action": "turn_off",
-  "timestamp": "'$(date -u +%Y-%m-%dT%H:%M:%S)'"
-}'
-
-docker compose logs --tail=30 override_detector | grep "??"
-WARN[0000] The "DISCORD_GUILD_ID" variable is not set. Defaulting to a blank string. 
-WARN[0000] /opt/claudehome/docker-compose.yml: the attribute `version` is obsolete, it will be ignored, please remove it to avoid potential confusion 
-(integer) 1
-WARN[0000] The "DISCORD_GUILD_ID" variable is not set. Defaulting to a blank string. 
-WARN[0000] /opt/claudehome/docker-compose.yml: the attribute `version` is obsolete, it will be ignored, please remove it to avoid potential confusion 
-(integer) 1
-WARN[0000] The "DISCORD_GUILD_ID" variable is not set. Defaulting to a blank string. 
-WARN[0000] /opt/claudehome/docker-compose.yml: the attribute `version` is obsolete, it will be ignored, please remove it to avoid potential confusion 
-(integer) 1
-WARN[0000] The "DISCORD_GUILD_ID" variable is not set. Defaulting to a blank string. 
-WARN[0000] /opt/claudehome/docker-compose.yml: the attribute `version` is obsolete, it will be ignored, please remove it to avoid potential confusion 
-(integer) 1
-{"count":1,"rules":[{"rule_id":"rule_claudehome_test_morning_lights_20260108_light.kitchen_roof_1_20260108","entity_id":"light.kitchen_roof_1","automation_id":"claudehome_test_morning_lights_20260108","rule_type":"time_block","condition":{"entity_id":"light.kitchen_roof_1","action":"turn_on","time_range":"22:00-23:00","block":true},"reason":"User repeatedly turns off light.kitchen_roof_1 around 22:00 (3 times)","override_count":3,"created_at":"2026-01-08T22:57:16.301794","confidence":0.6}]}WARN[0000] The "DISCORD_GUILD_ID" variable is not set. Defaulting to a blank string. 
-WARN[0000] /opt/claudehome/docker-compose.yml: the attribute `version` is obsolete, it will be ignored, please remove it to avoid potential confusion 
-root@debian:/opt/claudehome# 
+# 4. Test anomaly detection
+curl -X POST http://localhost:8013/detect \
+  -H "Content-Type: application/json" \
+  -d '{
+    "entity_id": "light.kitchen_roof_1",
+    "state": "on",
+    "timestamp": "2026-01-09T03:00:00"
+  }'
+{"status":"success","entity_id":"light.kitchen_roof_1","baseline":{"entity_id":"light.kitchen_roof_1","data_points":59,"learned_at":"2026-01-09T11:55:48.779671","state_type":"binary","typical_on_duration_minutes":0.19817686666666667,"typical_off_duration_minutes":49.825846166666665,"typical_state_duration_minutes":6.310961683333334,"typical_changes_per_day":10.2,"typical_on_hours":[5,20],"typical_on_percentage":44.06779661016949}}{"has_baseline":true,"entity_id":"light.kitchen_roof_1","anomalies_detected":1,"anomalies":[{"anomaly_id":"anom_20260109_115548_836225","entity_id":"light.kitchen_roof_1","anomaly_type":"pattern","severity":"low","description":"Active at unusual hour 3:00 (typical: [5, 20])","current_value":"on","expected_value":null,"score":2.0,"confidence":2.0,"timestamp":"2026-01-09T11:55:48.836249","metadata":{}}]}root@debian:/opt/claudehome# 

@@ -158,11 +158,14 @@ services:
       # - CLAUDE_MODEL=${CLAUDE_MODEL:-claude-sonnet-4-20250514}
       - HOME_ASSISTANT_URL=${HOME_ASSISTANT_URL}
       - HOME_ASSISTANT_TOKEN=${HOME_ASSISTANT_TOKEN}
+      # Phase 3: Prediction service integration
+      - PREDICTION_SERVICE_URL=http://prediction_service:8000
     ports:
       - "8012:8000"
     depends_on:
       - redis
       - triage_engine
+      - prediction_service
     restart: unless-stopped
     container_name: claudehome_proactive_engine
     networks:
@@ -175,11 +178,20 @@ services:
       - REDIS_URL=redis://redis:6379
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
       - CLAUDE_MODEL=claude-sonnet-4-20250514
+      # Phase 3.2: Database and prediction service
+      - MARIADB_HOST=${MARIADB_HOST}
+      - MARIADB_PORT=${MARIADB_PORT}
+      - MARIADB_USER=${MARIADB_USER}
+      - MARIADB_PASSWORD=${MARIADB_PASSWORD}
+      - MARIADB_DATABASE=${MARIADB_DATABASE}
+      - PREDICTION_SERVICE_URL=http://prediction_service:8000
+
     ports:
       - "8013:8000"
     depends_on:
       - redis
       - triage_engine
+      - prediction_service
     networks:
       - claudehome_net
     restart: unless-stopped
@@ -295,7 +307,124 @@ services:
       - claudehome_net
     restart: unless-stopped
 
+  learning_analyzer:
+    container_name: claudehome_learning_analyzer
+    build: ./services/learning_analyzer
+    environment:
+      - REDIS_URL=redis://redis:6379
+      - LLM_SERVICE_URL=http://llm_service:8000
+      - ANALYSIS_INTERVAL_HOURS=24
+    ports:
+      - "8019:8000"
+    depends_on:
+      - redis
+      - llm_service
+    networks:
+      - claudehome_net
+    restart: unless-stopped
+
+  prediction_service:
+    container_name: claudehome_prediction_service
+    build: ./services/prediction_service
+    environment:
+      - REDIS_URL=redis://redis:6379
+      - MARIADB_HOST=${MARIADB_HOST}
+      - MARIADB_PORT=${MARIADB_PORT}
+      - MARIADB_USER=${MARIADB_USER}
+      - MARIADB_PASSWORD=${MARIADB_PASSWORD}
+      - MARIADB_DATABASE=${MARIADB_DATABASE}
+      - MODEL_CACHE_DIR=/app/models
+      - PREDICTION_CACHE_TTL=3600
+    ports:
+      - "8020:8000"
+    volumes:
+      - prediction_models:/app/models
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - claudehome_net
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Phase 4.1: Explanation Engine
+  explanation_engine:
+    container_name: claudehome_explanation_engine
+    build: ./services/explanation_engine
+    environment:
+      - REDIS_URL=redis://redis:6379
+      - ANOMALY_DETECTOR_URL=http://anomaly_detector:8000
+      - PREDICTION_SERVICE_URL=http://prediction_service:8000
+    ports:
+      - "8021:8000"
+    depends_on:
+      - redis
+      - anomaly_detector
+      - prediction_service
+    networks:
+      - claudehome_net
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Phase 4.2: Outcome Tracker
+  outcome_tracker:
+    container_name: claudehome_outcome_tracker
+    build: ./services/outcome_tracker
+    environment:
+      - REDIS_URL=redis://redis:6379
+      - HOME_ASSISTANT_URL=${HOME_ASSISTANT_URL}
+      - HOME_ASSISTANT_TOKEN=${HOME_ASSISTANT_TOKEN}
+    ports:
+      - "8022:8000"
+    depends_on:
+      - redis
+    networks:
+      - claudehome_net
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Phase 4.3: Meta-Learner
+  meta_learner:
+    container_name: claudehome_meta_learner
+    build: ./services/meta_learner
+    environment:
+      - REDIS_URL=redis://redis:6379
+      - OUTCOME_TRACKER_URL=http://outcome_tracker:8000
+      - PREDICTION_SERVICE_URL=http://prediction_service:8000
+      - ANOMALY_DETECTOR_URL=http://anomaly_detector:8000
+      - PROACTIVE_ENGINE_URL=http://proactive_engine:8000
+    ports:
+      - "8023:8000"
+    depends_on:
+      - redis
+      - outcome_tracker
+      - prediction_service
+      - anomaly_detector
+      - proactive_engine
+    networks:
+      - claudehome_net
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
 volumes:
+  prediction_models:
+    driver: local
   redis_data:
     driver: local
 

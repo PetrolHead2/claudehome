@@ -19,6 +19,9 @@ import redis.asyncio as redis
 import aiohttp
 import logging
 
+# Import prediction client
+from prediction_client import enhance_pattern_with_predictions, get_prediction_summary
+
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
@@ -125,6 +128,9 @@ class Pattern(BaseModel):
     confidence: float
     description: str
     context: Dict[str, Any] = {}
+    # Phase 3: ML predictions
+    predictions: Dict[str, Any] = {}  # {entity_id: {next_on_time, confidence, ...}}
+    suggested_timing: Optional[Dict[str, Any]] = None  # {trigger_time, reason, confidence}
 
 
 class Suggestion(BaseModel):
@@ -160,6 +166,7 @@ async def health():
 async def analyze_patterns():
     """
     Analyze recent events for patterns and generate suggestions
+    PHASE 3: Enhanced with ML predictions for smarter timing
     """
     try:
         # Detect patterns
@@ -168,9 +175,32 @@ async def analyze_patterns():
         if not patterns:
             return {"message": "No actionable patterns detected", "patterns": []}
         
+        # PHASE 3: Enhance patterns with predictions
+        enhanced_patterns = []
+        prediction_enhancements = 0
+        
+        for pattern in patterns:
+            try:
+                # Add predictive context to pattern
+                enhanced = await enhance_pattern_with_predictions(pattern.dict())
+                
+                # Convert back to Pattern object but preserve predictions
+                pattern.predictions = enhanced.get('predictions', {})
+                pattern.suggested_timing = enhanced.get('suggested_timing')
+                
+                enhanced_patterns.append(pattern)
+                
+                if pattern.predictions:
+                    prediction_enhancements += 1
+                    logger.info(f"Enhanced '{pattern.description}' with predictions for {len(pattern.predictions)} entities")
+                    
+            except Exception as e:
+                logger.warning(f"Could not enhance pattern with predictions: {e}")
+                enhanced_patterns.append(pattern)
+        
         # Generate suggestions for high-confidence patterns
         suggestions = []
-        for pattern in patterns:
+        for pattern in enhanced_patterns:
             if pattern.confidence >= 0.7:  # Only high-confidence patterns
                 suggestion = await generate_suggestion(pattern)
                 if suggestion:
@@ -186,6 +216,7 @@ async def analyze_patterns():
         
         return {
             "patterns_detected": len(patterns),
+            "patterns_enhanced_with_predictions": prediction_enhancements,
             "suggestions_generated": len(suggestions),
             "suggestions": [s.dict() for s in suggestions]
         }

@@ -5,7 +5,9 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY main.py .
+# COPY main.py .
+# Copy all Python files, not just main.py
+COPY . .
 
 RUN useradd -m -u 1000 appuser && \
     chown -R appuser:appuser /app
